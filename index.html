@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake Coin Game</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #1f2937;
+      --accent: #22c55e;
+      --coin: #f59e0b;
+      --danger: #ef4444;
+      --grid: #e5e7eb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 20% 20%, #dbeafe 0%, transparent 35%),
+        radial-gradient(circle at 80% 70%, #fef3c7 0%, transparent 30%),
+        var(--bg);
+      font-family: "Pretendard", "Noto Sans KR", sans-serif;
+      color: var(--ink);
+      padding: 20px;
+    }
+
+    .game-wrap {
+      width: min(92vw, 560px);
+      background: var(--panel);
+      border: 1px solid #d1d5db;
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(31, 41, 55, 0.1);
+      padding: 16px;
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    .hint {
+      font-size: 13px;
+      color: #4b5563;
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      background: #fcfcfd;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+    }
+
+    .overlay {
+      margin-top: 12px;
+      text-align: center;
+      font-weight: 700;
+      color: var(--danger);
+      min-height: 24px;
+    }
+
+    .restart-btn {
+      margin-top: 8px;
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-weight: 700;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+    }
+
+    .restart-btn:active {
+      transform: translateY(1px);
+    }
+  </style>
+</head>
+<body>
+  <main class="game-wrap">
+    <div class="hud">
+      <div>코인: <span id="score">0</span></div>
+      <div>길이: <span id="length">4</span></div>
+    </div>
+    <canvas id="game" width="520" height="520"></canvas>
+    <div class="overlay" id="message"></div>
+    <button class="restart-btn" id="restart">다시 시작</button>
+    <div class="hint">방향키로 이동 · 코인을 먹으면 길이가 증가합니다.</div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const lengthEl = document.getElementById("length");
+    const messageEl = document.getElementById("message");
+    const restartBtn = document.getElementById("restart");
+
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
+    const tickMs = 120;
+
+    let snake;
+    let dir;
+    let nextDir;
+    let coin;
+    let score;
+    let alive;
+    let timerId;
+
+    function resetGame() {
+      snake = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+      ];
+      dir = { x: 1, y: 0 };
+      nextDir = { x: 1, y: 0 };
+      score = 0;
+      alive = true;
+      messageEl.textContent = "";
+      placeCoin();
+      updateHud();
+
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(gameLoop, tickMs);
+      draw();
+    }
+
+    function placeCoin() {
+      while (true) {
+        const candidate = {
+          x: Math.floor(Math.random() * tileCount),
+          y: Math.floor(Math.random() * tileCount),
+        };
+        const onSnake = snake.some((part) => part.x === candidate.x && part.y === candidate.y);
+        if (!onSnake) {
+          coin = candidate;
+          return;
+        }
+      }
+    }
+
+    function updateHud() {
+      scoreEl.textContent = score;
+      lengthEl.textContent = snake.length;
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--grid");
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= tileCount; i += 1) {
+        const p = i * gridSize;
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, canvas.height);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(canvas.width, p);
+        ctx.stroke();
+      }
+    }
+
+    function drawCoin() {
+      const cx = coin.x * gridSize + gridSize / 2;
+      const cy = coin.y * gridSize + gridSize / 2;
+      const r = gridSize * 0.35;
+      ctx.fillStyle = "#f59e0b";
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fde68a";
+      ctx.beginPath();
+      ctx.arc(cx - 2, cy - 2, r * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawSnake() {
+      snake.forEach((part, idx) => {
+        const isHead = idx === 0;
+        ctx.fillStyle = isHead ? "#16a34a" : "#22c55e";
+        ctx.fillRect(
+          part.x * gridSize + 1,
+          part.y * gridSize + 1,
+          gridSize - 2,
+          gridSize - 2
+        );
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+      drawCoin();
+      drawSnake();
+    }
+
+    function isOpposite(a, b) {
+      return a.x + b.x === 0 && a.y + b.y === 0;
+    }
+
+    function moveSnake() {
+      dir = nextDir;
+      const newHead = {
+        x: snake[0].x + dir.x,
+        y: snake[0].y + dir.y,
+      };
+
+      if (
+        newHead.x < 0 ||
+        newHead.y < 0 ||
+        newHead.x >= tileCount ||
+        newHead.y >= tileCount
+      ) {
+        gameOver();
+        return;
+      }
+
+      const hitSelf = snake.some((part) => part.x === newHead.x && part.y === newHead.y);
+      if (hitSelf) {
+        gameOver();
+        return;
+      }
+
+      snake.unshift(newHead);
+
+      const gotCoin = newHead.x === coin.x && newHead.y === coin.y;
+      if (gotCoin) {
+        score += 1;
+        placeCoin();
+      } else {
+        snake.pop();
+      }
+
+      updateHud();
+    }
+
+    function gameOver() {
+      alive = false;
+      clearInterval(timerId);
+      messageEl.textContent = `게임 오버! 코인 ${score}개 획득`;
+    }
+
+    function gameLoop() {
+      if (!alive) return;
+      moveSnake();
+      draw();
+    }
+
+    window.addEventListener("keydown", (event) => {
+      const keyToDir = {
+        ArrowUp: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 },
+      };
+
+      const chosen = keyToDir[event.key];
+      if (!chosen) return;
+      event.preventDefault();
+
+      if (!isOpposite(chosen, dir)) {
+        nextDir = chosen;
+      }
+    });
+
+    restartBtn.addEventListener("click", resetGame);
+
+    resetGame();
+  </script>
+</body>
+</html>
